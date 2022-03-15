@@ -1,3 +1,5 @@
+mod base58;
+
 #[cfg(test)]
 mod tests {
     #[test]

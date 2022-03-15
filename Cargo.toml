@@ -2,10 +2,16 @@
 name = "belenios"
 version = "0.1.0"
 edition = "2021"
-author = "Mark Schultz"
+authors = ["Mark Schultz"]
 description = "An Implementation of the Belenios e-voting protocol in Rust"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
+cryptid = "0.2.8"
+bulletproofs = "4.0"
+bs58 = "0.4.0"
+ring = "0.16.20"
+serde_json = "1.0"
