@@ -65,7 +65,9 @@ pub(crate) const INV_LOOKUPTABLE: [u8; 128] = [
     255, 255,
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Base58(pub(crate) String);
 
 impl From<u128> for Base58 {

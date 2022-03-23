@@ -2,13 +2,23 @@
 #[macro_use]
 extern crate derive_builder;
 
-enum Error {
+#[macro_use]
+extern crate serde;
+
+#[derive(Debug)]
+pub enum ProtocolError {
     IncorrectLenError,
+    DifferentMultisetError,
+    TrusteePKProofFailedError(Vec<usize>),
+    // The CA and Voting Server disagree over the public list L.
+    DisagreementOverLError,
 }
 
 pub mod datatypes {
+    pub mod ballot;
     pub mod base58;
     pub mod credentials;
+    pub mod election;
     pub mod questions;
     pub mod voter_ids;
 }
@@ -24,9 +34,7 @@ pub mod participants {
 }
 
 pub mod primitives {
+    pub mod group;
     pub mod pki;
     pub mod zkp;
-    pub mod curve;
 }
-
-pub mod utils;

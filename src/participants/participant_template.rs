@@ -28,10 +28,10 @@ use std::sync::{Arc, Mutex};
 
 /// Implements the aformentioned abstract form for each role uniformly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EmptyState;
+pub struct EmptyState;
 macro_rules! initialize_participant_impl {
     ($Role: ident) => {
-        struct $Role<T> {
+        pub struct $Role<T> {
             state: T,
             rng: Arc<Mutex<dyn SecureRandom>>,
         }

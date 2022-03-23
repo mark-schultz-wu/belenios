@@ -9,19 +9,18 @@
 //! This document defines both of these structs, and generally handles parsing base58.
 use crate::datatypes::base58::{Base58, BASE58_STRLEN, INV_LOOKUPTABLE, LOOKUPTABLE};
 use crate::datatypes::voter_ids::Voter_ID;
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-use curve25519_dalek::ristretto::RistrettoPoint;
-use curve25519_dalek::scalar::Scalar;
+use crate::primitives::group::{Point, Scalar};
 use ring::digest;
 use ring::pbkdf2::{self, PBKDF2_HMAC_SHA256};
 use ring::rand::SecureRandom;
+use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 
 /// A (public) Base58 string, which should uniquely identify the election that is occuring.
 /// UUIDs need not have a valid checksum.
-#[derive(Debug, Clone)]
-pub(crate) struct UUID(Base58);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UUID(Base58);
 
 impl UUID {
     pub fn gen(rng: Arc<Mutex<dyn SecureRandom>>) -> Self {
@@ -35,8 +34,8 @@ impl UUID {
 ///
 /// For passwords to be valid, they must pass a certain checksum, described in section 4.7
 /// of the specification.
-#[derive(Debug, Clone)]
-pub(crate) struct Password(pub(crate) Base58);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Password(pub(crate) Base58);
 
 impl Password {
     pub fn gen(rng: Arc<Mutex<dyn SecureRandom>>) -> Self {
@@ -78,7 +77,7 @@ impl Password {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Credential {
+pub struct Credential {
     password: Password,
     uuid: UUID,
 }
@@ -93,12 +92,12 @@ impl Credential {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct ExpandedCredential {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpandedCredential {
     pub(crate) password: Password,
     pub(crate) uuid: UUID,
     pub(crate) secret_key: Scalar,
-    pub(crate) public_key: RistrettoPoint,
+    pub(crate) public_key: Point,
 }
 
 impl ExpandedCredential {
@@ -118,7 +117,7 @@ impl From<Credential> for ExpandedCredential {
         let secret = (&c.password.0).into();
         pbkdf2::derive(algo, iter, salt, secret, &mut out);
         let secret_key = Scalar::from_bytes_mod_order(out);
-        let public_key = RISTRETTO_BASEPOINT_POINT * secret_key;
+        let public_key = Point::generator() * secret_key;
 
         ExpandedCredential {
             password: c.password,

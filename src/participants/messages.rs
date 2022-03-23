@@ -4,17 +4,21 @@
 #![allow(dead_code)]
 
 use crate::datatypes::credentials::{Credential, Password, UUID};
+use crate::datatypes::election::Election;
 use crate::datatypes::questions::Question;
-use curve25519_dalek::ristretto::RistrettoPoint;
+use crate::participants::trustee::TrusteePublicKey;
+use crate::primitives::group::{Point, Scalar};
+use crate::ProtocolError;
 use ring::rand::SecureRandom;
 use std::sync::{Arc, Mutex};
 
-pub enum Error {
-    DifferentMultisetError,
+/// Type used to raise an error when some cheating behavior is detected.
+pub struct ErrorM {
+    pub check: Result<(), ProtocolError>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EmptyMessage;
+pub struct EmptyMessage;
 
 /// The initialization message for the Server administrator.
 ///
@@ -23,9 +27,8 @@ pub(crate) struct EmptyMessage;
 ///
 /// The number of voters is `voters.len()`.
 /// Voter i's weight (written `wi` in the spec) is `voters[i]`.
-#[derive(Builder)]
-pub(crate) struct E1M {
-    pub(crate) questions: Vec<Question>,
+#[derive(Builder, Clone)]
+pub struct E1M {
     pub(crate) voters: Vec<u128>,
 }
 
@@ -33,27 +36,29 @@ pub(crate) struct E1M {
 ///
 /// FROM: Voting Server
 /// TO: Credential Authority
-pub(crate) struct E3M_VS {
+#[derive(Builder)]
+pub struct E3M_VS_to_CA {
     pub(crate) uuid: UUID,
 }
 /// The list of weights of voters
 ///
 /// FROM: ServerAdmin
 /// TO: CredentialAuthority.
-pub(crate) struct E3M_VA {
+#[derive(Builder, PartialEq)]
+pub struct E3M_SA_to_CA {
     pub(crate) voters: Vec<u128>,
 }
-pub(crate) struct E3M {
+pub struct E3M {
     pub(crate) uuid: UUID,
     pub(crate) voters: Vec<u128>,
 }
 
 /// Combining the two messages for step E3
-impl From<(E3M_VS, E3M_VA)> for E3M {
-    fn from((message_VS, message_VA): (E3M_VS, E3M_VA)) -> Self {
+impl From<(E3M_VS_to_CA, E3M_SA_to_CA)> for E3M {
+    fn from((message_VS, message_CA): (E3M_VS_to_CA, E3M_SA_to_CA)) -> Self {
         E3M {
             uuid: message_VS.uuid,
-            voters: message_VA.voters,
+            voters: message_CA.voters,
         }
     }
 }
@@ -66,7 +71,8 @@ impl From<(E3M_VS, E3M_VA)> for E3M {
 /// Each individual voter should only get their password,
 /// e.g. the Credential Authority should iterate over this, sending
 /// the i-th password to the i-th voter.
-pub(crate) struct E4M {
+#[derive(Builder)]
+pub struct E4M {
     pub(crate) passwords: Vec<Password>,
 }
 
@@ -74,26 +80,64 @@ pub(crate) struct E4M {
 ///
 /// FROM: CredentialAuthority,
 /// TO: (the i-th) Voter.
-pub(crate) struct E4Mi {
+#[derive(Clone)]
+pub struct E4Mi {
     pub(crate) password: Password,
+}
+
+impl From<E4M> for Vec<E4Mi> {
+    fn from(message: E4M) -> Self {
+        let vec_of_passes = message.passwords;
+        let mut output = Vec::new();
+        for i in 0..vec_of_passes.len() {
+            let individual_pass = E4Mi {
+                password: vec_of_passes[i].clone(),
+            };
+            output.push(individual_pass)
+        }
+        output
+    }
 }
 
 /// The (public) list of keys/weights L.
 ///
 /// FROM: CredentialAuthority,
 /// TO: VotingServer.
-pub(crate) struct E7M {
-    pub(crate) L: Vec<(RistrettoPoint, u128)>,
+pub struct E7M {
+    pub(crate) L: Vec<(Point, u128)>,
 }
 
-/// The result of the Voting Server verifying the multi-set of weights
-/// obtained from the CredentialAuthority is correct.
-///
-/// FROM: VotingServer,
-/// TO: Nobody in particular --- if this is an error, the voting server could just panic,
-/// or broadcast the error to all parties.
-pub(crate) struct E8M {
-    pub(crate) check: Result<(), Error>,
+pub struct E9Mi {
+    pub(crate) trustee_key: TrusteePublicKey,
+}
+pub struct E9M {
+    pub(crate) trustee_keys: Vec<TrusteePublicKey>,
+}
+
+impl From<Vec<E9Mi>> for E9M {
+    fn from(v: Vec<E9Mi>) -> Self {
+        let mut trustee_keys = Vec::new();
+        for i in 0..v.len() {
+            trustee_keys.push(v[i].trustee_key.clone());
+        }
+        E9M { trustee_keys }
+    }
+}
+
+#[derive(Builder)]
+pub struct E10M {
+    pub(crate) description: String,
+    pub(crate) name: String,
+    pub(crate) version: usize,
+    pub(crate) questions: Vec<Question>,
+    pub(crate) administrator: String,
+    pub(crate) credential_authority: String,
+}
+
+#[derive(Clone)]
+pub struct E11M {
+    pub(crate) election: Election,
+    pub(crate) L: Vec<(Point, u128)>,
 }
 
 /// The result of the Voting Server's check

@@ -4,8 +4,10 @@
 /// * `blank` is a boolean which can set to be `true` to indicate abstaining.
 /// * `min` is the minimum number of candidates to vote for (at most once per candidate).
 /// * `max` is the maximum number of candidates to vote for.
-#[derive(Debug, Clone, PartialEq, Builder)]
-pub struct HomQuest {
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Builder, Serialize, Deserialize)]
+pub struct Question {
     #[builder(setter(into))]
     pub(crate) question: String,
     #[builder(setter(custom))]
@@ -18,7 +20,7 @@ pub struct HomQuest {
     pub(crate) max: u128,
 }
 
-impl HomQuestBuilder {
+impl QuestionBuilder {
     /// The standard .into method cannot coerce a Vec<&str> to a Vec<String>.
     /// Using this, we can initialize anwers using `vec!["Answer 1", "Answer 2"]`,
     /// rather than having to write `vec!["Answer 1".to_string(), "Answer 2".to_string()]`.
@@ -33,31 +35,28 @@ impl HomQuestBuilder {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Question {
-    Homomorphic(HomQuest),
-}
-
-impl Into<Question> for HomQuest {
-    fn into(self) -> Question {
-        Question::Homomorphic(self)
-    }
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_build_hom_quest() {
+    pub(crate) fn build_question() -> Question {
         let quest = "Who should be IACR director in 2021?";
         let ans = vec!["Mark Fischlin", "Nadia Heninger", "Anna Lysyanskaya"];
-        let question = HomQuestBuilder::default()
+        let question = QuestionBuilder::default()
             .question(quest.clone())
             .answers(ans.clone())
             .build()
             .unwrap();
+        question
+    }
+
+    #[test]
+    fn test_build_quest() {
+        let quest = "Who should be IACR director in 2021?";
+        let ans = vec!["Mark Fischlin", "Nadia Heninger", "Anna Lysyanskaya"];
+
+        let question = build_question();
         assert_eq!(question.question, quest);
         assert_eq!(question.answers, ans);
         assert_eq!(question.blank, false);
@@ -67,9 +66,9 @@ mod tests {
     #[test]
     #[should_panic]
     /// We omit a giving a `question`, which should panic as there is no sensible default question.
-    fn test_build_hom_quest_wo_question() {
+    fn test_build_quest_wo_question() {
         let ans = vec!["Mark Fischlin", "Nadia Heninger", "Anna Lysyanskaya"];
-        let _ = HomQuestBuilder::default()
+        let _ = QuestionBuilder::default()
             .answers(ans.clone())
             .build()
             .unwrap();

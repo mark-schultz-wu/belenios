@@ -1,11 +1,16 @@
 //! The voting server
 
+use crate::datatypes::election::{Election, ElectionBuilder};
 use crate::datatypes::{base58::Base58, credentials::UUID, questions::Question};
-use crate::participants::messages::{EmptyMessage, Error, E1M, E3M_VS, E7M, E8M};
+use crate::participants::messages::*;
 use crate::participants::participant_template::*;
-use curve25519_dalek::ristretto::RistrettoPoint;
+use crate::primitives::group::{Point, Scalar};
+use crate::primitives::pki::VerificationKey;
+use crate::primitives::zkp::{DLog, ProofSystem};
+use crate::ProtocolError;
 use ring::rand::SecureRandom;
 use std::collections::HashMap;
+use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 initialize_participant_impl!(VotingServer);
@@ -13,46 +18,23 @@ initialize_participant_impl!(VotingServer);
 process_message_impl!(
     VotingServer,
     EmptyState,
-    E2,
-    E1M,
-    EmptyMessage,
-    |_: VotingServer<EmptyState>, m: E1M| {
-        (
-            E2 {
-                questions: m.questions,
-                voters: m.voters,
-            },
-            EmptyMessage,
-        )
-    }
-);
-
-struct E2 {
-    questions: Vec<Question>,
-    voters: Vec<u128>,
-}
-
-process_message_impl!(
-    VotingServer,
-    E2,
     E3,
-    EmptyMessage,
-    E3M_VS,
-    |s: VotingServer<E2>, _| {
+    E1M,
+    E3M_VS_to_CA,
+    |s: VotingServer<EmptyState>, m: E1M| {
         let uuid = UUID::gen(s.rng);
-        (
-            E3 {
-                questions: s.state.questions,
-                voters: s.state.voters,
-                uuid: uuid.clone(),
-            },
-            E3M_VS { uuid },
-        )
+        let state = E3Builder::default()
+            .voters(m.voters)
+            .uuid(uuid.clone())
+            .build()
+            .unwrap();
+        let message = E3M_VS_to_CABuilder::default().uuid(uuid).build().unwrap();
+        (state, message)
     }
 );
 
-struct E3 {
-    questions: Vec<Question>,
+#[derive(Builder)]
+pub struct E3 {
     voters: Vec<u128>,
     uuid: UUID,
 }
@@ -63,7 +45,7 @@ process_message_impl!(
     E3,
     E8,
     E7M,
-    E8M,
+    ErrorM,
     |s: VotingServer<E3>, m: E7M| {
         // Verify the multi-set of weights is correct.
         let mut local_weights = s.state.voters.clone();
@@ -73,20 +55,102 @@ process_message_impl!(
         let check = if local_weights == remote_weights {
             Ok(())
         } else {
-            Err(Error::DifferentMultisetError)
+            Err(ProtocolError::DifferentMultisetError)
         };
-
-        (
-            E8 {
-                uuid: s.state.uuid,
-                L: m.L,
-            },
-            E8M { check },
-        )
+        let state = E8Builder::default()
+            .uuid(s.state.uuid)
+            .L(m.L)
+            .build()
+            .unwrap();
+        let message = ErrorM { check };
+        (state, message)
     }
 );
 
-struct E8 {
+#[derive(Builder)]
+pub struct E8 {
     uuid: UUID,
-    L: Vec<(RistrettoPoint, u128)>,
+    L: Vec<(Point, u128)>,
+}
+
+process_message_impl!(
+    VotingServer,
+    E8,
+    E9,
+    E9M,
+    ErrorM,
+    |s: VotingServer<E8>, m: E9M| {
+        // Check all of the proofs of the trustees.
+        // Record any indices of failing proofs.
+        let trustee_keys = m.trustee_keys;
+        let mut cheaters = Vec::new();
+        let mut trustee_pk = Point::identity();
+        for i in 0..trustee_keys.len() {
+            let pk: Point = trustee_keys[i].public_key.clone().into();
+            let dlog = DLog {
+                rng: s.rng.clone(),
+                pt: pk.clone(),
+            };
+            if !dlog.verify(&trustee_keys[i].proof) {
+                cheaters.push(i);
+            } else {
+                trustee_pk = trustee_pk + pk;
+            }
+        }
+        let state = E9Builder::default()
+            .uuid(s.state.uuid)
+            .L(s.state.L)
+            .trustee_pk(trustee_pk)
+            .build()
+            .unwrap();
+        let check = if cheaters.len() > 0 {
+            Err(ProtocolError::TrusteePKProofFailedError(cheaters))
+        } else {
+            Ok(())
+        };
+        (state, ErrorM { check })
+    }
+);
+
+#[derive(Builder)]
+pub struct E9 {
+    uuid: UUID,
+    L: Vec<(Point, u128)>,
+    trustee_pk: Point,
+}
+
+process_message_impl!(
+    VotingServer,
+    E9,
+    E11,
+    E10M,
+    E11M,
+    |s: VotingServer<E9>, m: E10M| {
+        let election = ElectionBuilder::default()
+            .version(m.version)
+            .description(m.description)
+            .name(m.name)
+            .group("RISTRETTO-25519".to_string())
+            .public_key(s.state.trustee_pk)
+            .questions(m.questions)
+            .uuid(s.state.uuid)
+            .administrator(m.administrator)
+            .credential_authority(m.credential_authority)
+            .build()
+            .unwrap();
+        let state = E11 {
+            election: election.clone(),
+            L: s.state.L.clone(),
+        };
+        let message = E11M {
+            election,
+            L: s.state.L,
+        };
+        (state, message)
+    }
+);
+
+pub struct E11 {
+    pub(crate) election: Election,
+    pub(crate) L: Vec<(Point, u128)>,
 }
