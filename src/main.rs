@@ -125,4 +125,49 @@ fn main() {
         .into_iter()
         .map(|v| v.process_message(election_message.clone()))
         .collect();
+    // Create votes for voters.
+    // Each choice is a Vec<bool> denoting which options to vote for on a particular question.
+    // Associated with each voter is then a Vec<Vec<bool>>, denoting for each questino which
+    // options to vote for.
+
+    // Q1 everyone votes for the same person
+    let choice_q1: Vec<bool> = vec![false, false, true];
+    // Q2 there will be three options people are roughly split between
+    let choice_q2a = vec![true, false, false];
+    let choice_q2b = vec![false, true, false];
+    let choice_q2c = vec![false, false, true];
+
+    let voters: Vec<(Voter<belenios::participants::voter::V1>, V3Mi)> = voters
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (v, _))| {
+            let mut choices = Vec::new();
+            choices.push(choice_q1.clone());
+            if idx <= 3 {
+                choices.push(choice_q2a.clone());
+            } else if idx <= 7 {
+                choices.push(choice_q2b.clone())
+            } else {
+                choices.push(choice_q2c.clone());
+            }
+            let message = V2Mi { choices };
+            v.process_message(message)
+        })
+        .collect();
+    let mut new_voters: Vec<Voter<belenios::participants::voter::V1>> = Vec::new();
+    let mut messages = Vec::new();
+    for (voter, message) in voters.into_iter() {
+        new_voters.push(voter);
+        messages.push(message);
+    }
+    let (mut voting_server, _) = voting_server.process_message(EmptyMessage);
+    for ballot in messages.into_iter() {
+        let (temp_voting_server, message) = voting_server.process_message(ballot);
+        // Could handle one of ~3 different errors that could happen here.
+        message
+            .check
+            .expect("Cheap error handling --- will panic if any misbehavior is detected");
+        voting_server = temp_voting_server;
+    }
+    // Have the list of accepted_ballots now.
 }

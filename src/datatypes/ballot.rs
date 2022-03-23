@@ -1,7 +1,7 @@
 //! The Ballot Datatype
 
 use crate::{
-    datatypes::credentials::{Credential, Password, UUID},
+    datatypes::credentials::{Credential, ExpandedCredential, Password, UUID},
     datatypes::election::Election,
     datatypes::questions::Question,
     primitives::group::{Point, Scalar},
@@ -11,12 +11,12 @@ use crate::{
 use ring::rand::SecureRandom;
 use std::sync::{Arc, Mutex};
 
-#[derive(Builder)]
+#[derive(Builder, Clone, Debug)]
 pub struct Ballot {
-    election_uuid: UUID,
-    election_hash: String,
-    credential: Point,
-    answers: Vec<Answer>,
+    pub(crate) election_uuid: UUID,
+    pub(crate) election_hash: Vec<u8>,
+    pub(crate) credential: Point,
+    pub(crate) answers: Vec<Answer>,
 }
 
 impl Ballot {
@@ -29,7 +29,7 @@ impl Ballot {
         for i in 0..self.answers.len() {
             if self.answers[i].verify(
                 rng.clone(),
-                self.election_hash.as_bytes(),
+                &self.election_hash,
                 self.credential,
                 pub_key,
                 &questions[i],
@@ -144,20 +144,23 @@ impl From<StateNeededForAnswer> for Answer {
         let rng = state.rng.clone();
         let ms = state.choices.clone();
         let question = state.question.clone();
-        let pub_key: EncryptionKey = state.election.public_key.into();
+        let uuid = state.election.uuid.clone();
+        let cred: Credential = (state.pass.clone(), uuid).into();
+        let expanded_cred: ExpandedCredential = cred.into();
+        let pub_key = expanded_cred.public_key;
         // Generating encryptions + randomness
         let mut ctxts: Vec<Ciphertext> = Vec::new();
         let mut rs: Vec<Scalar> = Vec::new();
         let mut individual_pfs = Vec::new();
         for i in 0..ms.len() {
-            let (ctxt, r) = pub_key.enc_leak_randomness(rng.clone(), Scalar::from(ms[i] as u128));
+            let pk: EncryptionKey = state.election.public_key.into();
+            let (ctxt, r) = pk.enc_leak_randomness(rng.clone(), Scalar::from(ms[i] as u128));
             ctxts.push(ctxt);
             rs.push(r);
         }
         // Getting ready the items we need for proofs
         let election_hash = state.election.fingerprint();
-        let keys: EncryptionKeys = (&state.pass).into();
-        let S0 = gen_S0(&election_hash, keys.public.into());
+        let S0 = gen_S0(&election_hash, pub_key);
         let serialized = bincode::serialize(&ctxts).unwrap();
         let S = [S0.clone(), serialized].concat();
         let y = state.election.public_key.clone();
@@ -238,7 +241,8 @@ mod tests {
         // answers.
         let election = crate::datatypes::election::tests::build_election();
         let questions = election.questions.clone();
-        let public_key = election.public_key.clone();
+        let uuid = election.uuid.clone();
+        let cred: Credential = (pass.clone(), uuid).into();
         let choices = vec![false, true, false];
         let state = StateNeededForAnswerBuilder::default()
             .choices(choices)
@@ -249,11 +253,11 @@ mod tests {
             .build()
             .unwrap();
         let answer: Answer = state.into();
-        let cred: EncryptionKeys = (&pass).into();
+        let expanded_cred: ExpandedCredential = cred.into();
         assert!(answer.verify(
             rng.clone(),
             &election.fingerprint(),
-            cred.public.into(),
+            expanded_cred.public_key,
             &election.public_key,
             &questions[0],
         ));

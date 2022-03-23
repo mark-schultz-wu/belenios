@@ -1,5 +1,6 @@
 //! The voting server
 
+use crate::datatypes::ballot::Ballot;
 use crate::datatypes::election::{Election, ElectionBuilder};
 use crate::datatypes::{base58::Base58, credentials::UUID, questions::Question};
 use crate::participants::messages::*;
@@ -153,4 +154,91 @@ process_message_impl!(
 pub struct E11 {
     pub(crate) election: Election,
     pub(crate) L: Vec<(Point, u128)>,
+}
+
+process_message_impl!(
+    VotingServer,
+    E11,
+    V4,
+    EmptyMessage,
+    EmptyMessage,
+    |s: VotingServer<E11>, m: EmptyMessage| {
+        let accepted_ballots: Vec<(Ballot, u128)> = Vec::new();
+        let state = V4 {
+            election: s.state.election,
+            L: s.state.L,
+            accepted_ballots,
+        };
+        (state, EmptyMessage)
+    }
+);
+
+// Processing a Ballot
+
+process_message_impl!(
+    VotingServer,
+    V4,
+    V4,
+    V3Mi,
+    ErrorM,
+    |s: VotingServer<V4>, m: V3Mi| {
+        let L = s.state.L.clone();
+        let election = s.state.election.clone();
+        let accepted_ballots = s.state.accepted_ballots.clone();
+        let ballot = m.vote;
+        let cred = ballot.credential;
+        // Find the weight of the ballot
+        let mut found = false;
+        let mut found_wt = 1;
+        for (pt, wt) in L.iter() {
+            if *pt == cred {
+                found = true;
+                found_wt = *wt;
+            }
+        }
+        if !found {
+            return (
+                s.state,
+                ErrorM {
+                    check: Err(ProtocolError::CredentialNotFoundError),
+                },
+            );
+        }
+        let mut found = false;
+        for (ballot, _) in accepted_ballots.iter() {
+            if cred == ballot.credential {
+                found = true;
+            }
+        }
+        if found {
+            return (
+                s.state,
+                ErrorM {
+                    check: Err(ProtocolError::CredentialUsedTwiceError),
+                },
+            );
+        }
+        if !ballot.verify(s.rng.clone(), &election.public_key, &election.questions) {
+            return (
+                s.state,
+                ErrorM {
+                    check: Err(ProtocolError::BallotVerificationError),
+                },
+            );
+        }
+        let mut accepted_ballots = accepted_ballots;
+        accepted_ballots.push((ballot, found_wt));
+        let state = V4 {
+            election,
+            L,
+            accepted_ballots,
+        };
+        (state, ErrorM { check: Ok(()) })
+    }
+);
+
+pub struct V4 {
+    pub(crate) election: Election,
+    pub(crate) L: Vec<(Point, u128)>,
+    pub(crate) accepted_ballots: Vec<(Ballot, u128)>,
 }

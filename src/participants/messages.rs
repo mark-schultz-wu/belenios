@@ -3,6 +3,7 @@
 //! See TODO: write up somewhere centrally.
 #![allow(dead_code)]
 
+use crate::datatypes::ballot::Ballot;
 use crate::datatypes::credentials::{Credential, Password, UUID};
 use crate::datatypes::election::Election;
 use crate::datatypes::questions::Question;
@@ -138,6 +139,26 @@ pub struct E10M {
 pub struct E11M {
     pub(crate) election: Election,
     pub(crate) L: Vec<(Point, u128)>,
+}
+
+// The voting choices made in the election for each question.
+pub struct V2Mi {
+    pub choices: Vec<Vec<bool>>,
+}
+
+pub struct V3Mi {
+    pub(crate) vote: Ballot,
+}
+
+impl From<Vec<V3Mi>> for V3M {
+    fn from(v: Vec<V3Mi>) -> Self {
+        let votes = v.iter().map(|s| s.vote.clone()).collect();
+        V3M { votes }
+    }
+}
+
+pub struct V3M {
+    pub(crate) votes: Vec<Ballot>,
 }
 
 /// The result of the Voting Server's check

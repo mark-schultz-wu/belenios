@@ -12,6 +12,9 @@ pub enum ProtocolError {
     TrusteePKProofFailedError(Vec<usize>),
     // The CA and Voting Server disagree over the public list L.
     DisagreementOverLError,
+    CredentialNotFoundError,
+    CredentialUsedTwiceError,
+    BallotVerificationError,
 }
 
 pub mod datatypes {

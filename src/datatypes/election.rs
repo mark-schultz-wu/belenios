@@ -15,7 +15,7 @@ pub struct Election {
     group: String,
     pub(crate) public_key: Point,
     pub(crate) questions: Vec<Question>,
-    uuid: UUID,
+    pub(crate) uuid: UUID,
     administrator: String,
     credential_authority: String,
 }

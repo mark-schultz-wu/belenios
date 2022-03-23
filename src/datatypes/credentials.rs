@@ -92,6 +92,15 @@ impl Credential {
     }
 }
 
+impl From<(Password, UUID)> for Credential {
+    fn from((pass, uuid): (Password, UUID)) -> Self {
+        Self {
+            password: pass,
+            uuid,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExpandedCredential {
     pub(crate) password: Password,

@@ -209,6 +209,7 @@ impl EncryptionKeys {
 }
 */
 
+/*
 impl From<&Password> for EncryptionKeys {
     fn from(secret: &Password) -> Self {
         let enc_sep = DomainSeparator(String::from("dk"));
@@ -219,6 +220,7 @@ impl From<&Password> for EncryptionKeys {
         }
     }
 }
+*/
 
 #[derive(Debug, Clone)]
 pub(crate) struct SigningKey(pub(crate) Scalar);
